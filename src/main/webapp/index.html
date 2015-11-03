@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Static</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" type="text/css" href="css/dc.css"/>
+	<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css"/>
+</head>
+<style>
+    .mart {
+        margin-top: 10px;
+    }
+
+    .marr{
+        margin-right:100px;
+    }
+
+    .header{
+        background: lightgray;
+        padding-left: 10px;
+        width: 990px;
+        margin-bottom: 10px;
+    }
+</style>
+<body>
+<div class="container">
+    <div class="row header">
+        <h1>Error Analysis</h1>
+        <p>API Error Analysis</p>
+    </div>
+
+    <div class="row" id="chart-line-hitsperday">
+        <strong>Messages by Time Unit</strong>
+    </div>
+    <div class="row span4 mart marr" id="pie-chart-aornon">
+        <strong>Messages by Fault Apigee/External</strong>
+    </div>
+    <div class="row span4 mart" id="pie-chart-faultcode">
+        <strong>Messages by Fault Code</strong>
+    </div>
+    <div class="row span4 mart" id="pie-policy-name">
+        <strong>Messages by Policy Name</strong>
+    </div>
+</div>
+<script type="text/javascript" src="js/d3.js"></script>
+<script type="text/javascript" src="js/crossfilter.js"></script>
+<script type="text/javascript" src="js/dc.js"></script>
+<script type="text/javascript">
+
+    	d3.json('/stats',function(data){
+    		var parseDate = d3.time.format("%Y-%m-%d %H:%M").parse;
+
+    		data.forEach(function(d){
+    			d.time = parseDate(d.timeInstance);
+    			d.messageCount = +d.messageCount;
+    		});
+
+    		var ndx = crossfilter(data);
+    		var all = ndx.groupAll().reduceSum(function(d){ return d.messageCount; });
+
+            //time dimension
+    		var timeDim                = ndx.dimension(function(d){ return d.time; });
+
+    		//isApigeeFault Dimension
+    		var isApigeeFaultDim       = ndx.dimension(function(d){
+    		    if ( d.isApigeeFault == "0") {
+    		        return "Non-Apigee Error";
+    		    }else {
+    		        return "Apigee Error";
+    		    }});
+
+            //edgeFaultCode Dimension
+    		var edgeApigeeFaultCodeDim = ndx.dimension(function(d){ return d.edgeExecutionFaultCode; });
+
+    		var edgePolicyNameDim      = ndx.dimension(function(d){ return d.edgeExecutionPolicyName; })
+
+    		//message count by time
+    		var mCountByTime           = timeDim.group().reduceSum(function(d){ return d.messageCount; });
+
+    		//message count by isApigeeFault
+    		var mCountByApigeeFault    = isApigeeFaultDim.group().reduceSum(function(d){ return d.messageCount; })
+
+    		//message count by Fault Code
+    		var mCountByFaultCode      = edgeApigeeFaultCodeDim.group().reduceSum(function(d){ return d.messageCount; })
+
+    		var mCountByPolicyName     = edgePolicyNameDim.group().reduceSum(function(d){ return d.messageCount; })
+
+			var minDate = timeDim.bottom(1)[0].time;
+			var maxDate = timeDim.top(1)[0].time;
+
+    		var timeChart 		   = dc.lineChart("#chart-line-hitsperday");
+    		var isApigeeFaultChart = dc.pieChart("#pie-chart-aornon");
+    		var faultCodeChart     = dc.pieChart("#pie-chart-faultcode");
+    		var faultPolicyChart   = dc.pieChart("#pie-policy-name");
+
+    		timeChart
+				.width(990).height(300)
+				.margins({top: 10, right: 0, bottom: 20, left: 40})
+				.renderArea(true)
+				.dimension(timeDim)
+				.group(mCountByTime)
+				.brushOn(true)
+				.elasticX(true)
+				.elasticY(true)
+				.xUnits(d3.time.hour)
+				.yAxisLabel("Message Count")
+				.x(d3.time.scale().domain([minDate,maxDate]));
+
+
+			isApigeeFaultChart
+				.width(300)
+				.height(300)
+				.innerRadius(50)
+				.dimension(isApigeeFaultDim)
+				.group(mCountByApigeeFault)
+				.label(function (d) {
+                    if (isApigeeFaultChart.hasFilter() && !isApigeeFaultChart.hasFilter(d.key)) {
+                        return d.key + '(0%)';
+                    }
+                    var label = d.key;
+                    if (all.value()) {
+                        label += '(' + Math.floor(d.value / all.value() * 100) + '%)';
+                    }
+                    return label;
+                })
+				.legend(dc.legend());
+
+			faultCodeChart
+				.width(300)
+				.height(300)
+				.slicesCap(4)
+				.innerRadius(50)
+				.dimension(edgeApigeeFaultCodeDim)
+				.group(mCountByFaultCode)
+				.legend(dc.legend());
+
+			faultPolicyChart
+				.width(300)
+				.height(300)
+				.slicesCap(4)
+				.innerRadius(50)
+				.dimension(edgePolicyNameDim)
+				.group(mCountByPolicyName)
+				.legend(dc.legend());
+
+			dc.renderAll();
+
+    	});
+
+ </script>
+
+</body>
+</html>
